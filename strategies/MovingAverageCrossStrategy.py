@@ -1,10 +1,12 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import backtrader as bt
 import pandas as pd
-from binance.client import Client
-import datetime
 
 import matplotlib
 matplotlib.use('Agg')
@@ -12,34 +14,7 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# 初始化币安客户端
-client = Client()
-
-# 获取历史k线数据
-def get_binance_btc_data(symbol='BTCUSDT', interval='1d', lookback_days=600):
-    end_time = datetime.datetime.now()
-    start_time = end_time - datetime.timedelta(days=lookback_days)
-
-    klines = client.get_historical_klines(
-        symbol,
-        interval,
-        start_str=start_time.strftime("%d %b %Y %H:%M:%S"),
-        end_str=end_time.strftime("%d %b %Y %H:%M:%S")
-    )
-
-    df = pd.DataFrame(klines, columns=[
-        'timestamp', 'open', 'high', 'low', 'close', 'volume',
-        'close_time', 'quote_asset_volume', 'number_of_trades',
-        'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
-    ])
-
-    df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
-    df.set_index('datetime', inplace=True)
-    df = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
-
-    return df
-
-df = get_binance_btc_data()
+from data.binance import get_klines
 
 # backtrader 数据接口
 class PandasData(bt.feeds.PandasData):
@@ -103,7 +78,7 @@ def run_backtest_and_plot(interval, short_period, long_period, plot=False):
     if short_period >= long_period:
         return None  # 这句很重要，避免无效数据加入结果
 
-    df = get_binance_btc_data(interval=interval)
+    df = get_klines(interval=interval)
     data = PandasData(dataname=df)
 
     cerebro = bt.Cerebro()

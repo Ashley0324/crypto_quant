@@ -1,10 +1,12 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import backtrader as bt
 import pandas as pd
-from binance.client import Client
-import datetime
 import seaborn as sns
 
 import matplotlib
@@ -14,38 +16,11 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# 处理变量为none
+from data.binance import get_klines
+from strategies.core.turtle_logic import calc_atr, calc_donchian
+
 def format_float(value, digits=2):
     return f"{value:.{digits}f}" if value is not None else "N/A"
-
-# 初始化币安客户端
-client = Client()
-
-# 获取历史k线数据
-def get_binance_btc_data(symbol='BTCUSDT', interval='1h', lookback_days=300):
-    end_time = datetime.datetime.now()
-    start_time = end_time - datetime.timedelta(days=lookback_days)
-
-    klines = client.get_historical_klines(
-        symbol,
-        interval,
-        start_str=start_time.strftime("%d %b %Y %H:%M:%S"),
-        end_str=end_time.strftime("%d %b %Y %H:%M:%S")
-    )
-
-    df = pd.DataFrame(klines, columns=[
-        'timestamp', 'open', 'high', 'low', 'close', 'volume',
-        'close_time', 'quote_asset_volume', 'number_of_trades',
-        'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
-    ])
-
-    df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
-    df.set_index('datetime', inplace=True)
-    df = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
-
-    return df
-
-df = get_binance_btc_data()
 
 # backtrader 数据接口
 class PandasData(bt.feeds.PandasData):
@@ -66,10 +41,11 @@ class TurtleATRStrategy(bt.Strategy):
         ('exit_period', 10),
         ('atr_period', 14),
         ('risk_per_trade', 0.01),
-        ('max_units', 4),  # 最多加仓次数
+        ('max_units', 4),
     )
 
     def __init__(self):
+        # 仍使用 bt.ind 计算指标（Backtrader 内部优化，回测更快）
         self.entry_high = bt.ind.Highest(self.data.high, period=self.p.entry_period)
         self.exit_low = bt.ind.Lowest(self.data.low, period=self.p.exit_period)
         self.atr = bt.ind.ATR(self.data, period=self.p.atr_period)
@@ -82,7 +58,7 @@ class TurtleATRStrategy(bt.Strategy):
     def notify_order(self, order):
         if order.status in [order.Completed, order.Canceled, order.Margin]:
             self.order = None
-    
+
     def notify_trade(self, trade):
         if trade.isclosed:
             self.trade_count += 1
@@ -91,32 +67,40 @@ class TurtleATRStrategy(bt.Strategy):
         if self.order:
             return
 
+        # 把 bt 指标值转成 DataFrame 片段，交给 core 逻辑判断
+        # 注意：Backtrader 回测中直接用 bt.ind 值更高效，
+        # 这里手动对齐 core 的出场/止损/入场逻辑，保持行为一致
+        close = self.data.close[0]
+        atr = self.atr[0]
+        entry_high = self.entry_high[-1]   # 前一根的通道值，与 core 一致
+        exit_low = self.exit_low[-1]
+
         cash = self.broker.get_cash()
 
         if not self.position:
-            if self.data.close[0] > self.entry_high[-1]:
+            if close > entry_high:
                 risk_amount = cash * self.p.risk_per_trade
-                self.unit_size = risk_amount / self.atr[0]
-                self.last_entry_price = self.data.close[0]
+                self.unit_size = risk_amount / atr if atr > 0 else 0
+                self.last_entry_price = close
                 self.units = 1
                 self.order = self.buy(size=self.unit_size)
         else:
-            # 加仓逻辑：每次上涨0.5ATR时加一次仓
+            # 加仓
             if self.units < self.p.max_units:
-                if self.data.close[0] >= self.last_entry_price + 0.5 * self.atr[0]:
+                if close >= self.last_entry_price + 0.5 * atr:
                     self.order = self.buy(size=self.unit_size)
-                    self.last_entry_price = self.data.close[0]
+                    self.last_entry_price = close
                     self.units += 1
 
-            # 平仓逻辑：跌破 exit 通道 或者 价格低于最后入场价 - 2ATR（止损）
-            stop_price = self.last_entry_price - 2 * self.atr[0]
-            if self.data.close[0] < self.exit_low[-1] or self.data.close[0] < stop_price:
+            # 出场：跌破退出通道 或 止损
+            stop_price = self.last_entry_price - 2 * atr
+            if close < exit_low or close < stop_price:
                 self.order = self.sell(size=self.position.size)
                 self.units = 0
 
 # 设置Backtrader
 def run_backtest_and_plot(interval, entry_period, exit_period, atr_period, plot=False):
-    df = get_binance_btc_data(interval=interval)
+    df = get_klines(interval=interval)
     data = PandasData(dataname=df)
 
     cerebro = bt.Cerebro()

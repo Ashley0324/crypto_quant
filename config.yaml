@@ -1,0 +1,30 @@
+# 加密货币实盘交易配置
+# 注意: testnet: true 为币安测试网，改为 false 才会使用真实资金
+
+symbol: BTCUSDT
+interval: 1h
+testnet: true                 # 测试网模式，改为 false 开启实盘
+strategy: ma_cross            # 可选: ma_cross | turtle
+
+# Broker 返佣配置（Manas AI）
+broker_config:
+  spot_id: YD783Z4B           # 现货 Broker ID
+  futures_id: ethkXc9Q        # 合约 Broker ID
+
+# 风险控制
+risk:
+  max_position_pct: 0.95      # 最大仓位比例（每次最多用 95% 的 USDT 余额）
+  max_drawdown_pct: 0.15      # 最大回撤 15%，触发后停止交易
+  daily_loss_limit_pct: 0.05  # 日亏损超过 5% 则停止交易
+
+# 策略参数（与回测最优参数一致）
+strategy_params:
+  ma_cross:
+    short_period: 11
+    long_period: 20
+  turtle:
+    entry_period: 10
+    exit_period: 30
+    atr_period: 15
+    risk_per_trade: 0.01
+    max_units: 4

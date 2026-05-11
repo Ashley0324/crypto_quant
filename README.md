@@ -194,4 +194,3 @@ class MyStrategy(BaseStrategy):
 - Issue / PR：[github.com/Ashley0324/crypto_quant](https://github.com/Ashley0324/crypto_quant)
 - Email：ashleyjin0324@gmail.com
 - Telegram 群：https://t.me/+PMkkHh0IfVU4ZTJl
-- 微信公众号：泡芙写字的地方

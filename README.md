@@ -33,36 +33,6 @@ crypto_quant/
 └── requirements.txt
 ```
 
-## 架构设计
-
-### 实盘引擎架构
-
-```
-                        ┌─────────────────────────────────────┐
-                        │           TradingEngine              │
-                        │                                     │
-  Binance REST ─────────┤  BinanceDataFeed                    │
-  Binance WS  ─────────►│    └─ load_history()                │
-                        │    └─ start() / _handle_message()   │
-                        │         │ on_candle_close            │
-                        │         ▼                           │
-                        │  Strategy.on_candle(df)             │
-                        │    └─ Signal(BUY/SELL/HOLD)         │
-                        │         │                           │
-                        │         ▼                           │
-                        │  RiskManager.check()                │
-                        │    └─ 回撤/日亏损检查               │
-                        │         │ 通过                      │
-                        │         ▼                           │
-                        │  BinanceBroker                      │
-                        │    └─ buy_market() / sell_all()     │
-                        │    └─ newClientOrderId (broker tag) │
-                        │         │                           │
-                        │         ▼                           │
-                        │  TelegramNotifier + CSV 日志        │
-                        └─────────────────────────────────────┘
-```
-
 ### 模块职责
 
 | 模块 | 职责 |
